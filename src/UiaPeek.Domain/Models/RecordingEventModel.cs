@@ -1,4 +1,6 @@
-﻿namespace UiaPeek.Domain.Models
+﻿using System;
+
+namespace UiaPeek.Domain.Models
 {
     /// <summary>
     /// Represents a single event recorded during a UI automation session.
@@ -17,6 +19,11 @@
         /// Gets or sets the specific event identifier or name (e.g., "Click", "KeyDown").
         /// </summary>
         public string Event { get; set; }
+
+        /// <summary>
+        /// Gets or sets the name of the machine where the event was recorded.
+        /// </summary>
+        public string MachineName { get; set; } = Environment.MachineName;
 
         /// <summary>
         /// Gets or sets the timestamp (in Unix epoch milliseconds) when the event occurred.
