@@ -159,7 +159,7 @@ namespace UiaPeek.Domain.Extensions
 
                 // Check if identifiers are "broken" (contain quotes).
                 var nameBroken = hasName && IsBroken(name);
-                var autoBroken = hasAutomationId && IsBroken(automationId);
+                var automationIdBroken = hasAutomationId && IsBroken(automationId);
 
                 // LAST node with no identifiers -> emit //ControlType and finish.
                 if (isLast && !hasName && !hasAutomationId)
@@ -179,22 +179,23 @@ namespace UiaPeek.Domain.Extensions
                 var sep = isGap ? "//" : "/";
                 isGap = false;
 
-                // Prefer Name if present and safe.
-                if (hasName && !nameBroken)
-                {
-                    xpathBuilder
-                        .Append(sep)
-                        .Append(control)
-                        .Append($"[@Name='{name}']");
-                }
-                // Else prefer AutomationId if present and safe.
-                else if (hasAutomationId && !autoBroken)
+                // Prefer AutomationId if present and safe.
+                if (hasAutomationId && !automationIdBroken)
                 {
                     xpathBuilder
                         .Append(sep)
                         .Append(control)
                         .Append($"[@AutomationId='{automationId}']");
                 }
+                // Else prefer Name if present and safe.
+                else if (hasName && !nameBroken)
+                {
+                    xpathBuilder
+                        .Append(sep)
+                        .Append(control)
+                        .Append($"[@Name='{name}']");
+                }
+
                 // Otherwise, identifiers exist but are broken (contain quotes) -> emit placeholder.
                 else
                 {
@@ -356,14 +357,14 @@ namespace UiaPeek.Domain.Extensions
                 // COM object is not available or failed; return fallback.
                 return fallback;
             }
-            catch (NullReferenceException)
-            {
-                // Getter referenced a null object; return fallback.
-                return fallback;
-            }
             catch (InvalidComObjectException)
             {
                 // The COM object has been released or is invalid; return fallback.
+                return fallback;
+            }
+            catch (Exception)
+            {
+                // Getter referenced a null object; return fallback.
                 return fallback;
             }
         }

@@ -59,7 +59,7 @@ namespace UiaPeek.Domain.Middlewares
 
         // Retrieves a module handle for the specified module.
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string? lpModuleName);
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         // Posts a WM_QUIT message to the thread message queue, signaling message loop termination.
         [DllImport("user32.dll")]
@@ -298,7 +298,7 @@ namespace UiaPeek.Domain.Middlewares
             var message = new RecordingEventModel
             {
                 Chain = repository.Peek(),
-                Event = isKeyDown ? "Down" : "Up",
+                Event = isKeyDown ? "Key Down" : "Key Up",
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 Type = "Keyboard",
                 Value = new
