@@ -44,6 +44,11 @@ namespace UiaPeek.Domain.Models
         public IUIAutomationElement Element { get; set; }
 
         /// <summary>
+        /// Gets or sets the framework identifier of the UI element.
+        /// </summary>
+        public string FrameworkId { get; set; }
+
+        /// <summary>
         /// Indicates whether this node represents the top-level window in the hierarchy.
         /// </summary>
         public bool IsTopWindow { get; set; }
