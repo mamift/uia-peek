@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -18,15 +19,9 @@ namespace UiaPeek.Domain.Middlewares
     /// Background service that installs and manages global low-level keyboard
     /// and mouse hooks using the Win32 API.  
     /// Captured input events are translated into structured models and
-    /// broadcast in real time to connected SignalR clients via <see cref="PeekHub"/>.  
+    /// broadcast in real time to connected SignalR clients via <see cref="PeekHub"/>.
     /// </summary>
-    /// <param name="hub">SignalR hub context used to broadcast captured input events to all connected clients.</param>
-    /// <param name="logger">Logger for diagnostics, error reporting, and lifecycle information about the service.</param>
-    /// <param name="repository">Repository used to resolve the current UI element chain at the time of an event,providing context for recorded input.</param>
-    public sealed class EventCaptureService(
-        IHubContext<PeekHub> hub,
-        ILogger<EventCaptureService> logger,
-        IUiaPeekRepository repository) : BackgroundService
+    public sealed class EventCaptureService : BackgroundService
     {
         #region *** User32    ***
         // Passes the hook information to the next hook procedure in the current hook chain.
@@ -150,14 +145,55 @@ namespace UiaPeek.Domain.Middlewares
         // the corresponding KeyUp event can reuse the exact same string.
         private static readonly Dictionary<uint, string> _keysLog = [];
 
+        // Thread-safe queue for captured input events awaiting processing.
+        private readonly ConcurrentQueue<EventRecord> _eventsQueue = new();
+
+        // SignalR hub context for broadcasting captured input events to connected clients.
+        private readonly IHubContext<PeekHub> _hub;
+
         // Delegate reference for the low-level keyboard hook callback.  
         // Must be kept alive to prevent garbage collection while the hook is active.
         private HookProcess _keyboardCallback;
 
+        // Logger for diagnostics, error reporting, and lifecycle information.
+        private readonly ILogger<EventCaptureService> _logger;
+
         // Delegate reference for the low-level mouse hook callback.  
         // Must be kept alive to prevent garbage collection while the hook is active.
         private HookProcess _mouseCallback;
+
+        // Repository used to resolve the current UI element chain at the time of an event.
+        private readonly IUiaPeekRepository _repository;
+
+        // Auto-reset event used to signal the background processing task when new events are available.
+        private readonly AutoResetEvent _signal = new(initialState: false);
         #endregion
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="EventCaptureService"/> class
+        /// and starts the background listener responsible for processing captured UI events.
+        /// </summary>
+        /// <param name="hub">The SignalR hub context used to broadcast resolved UI events to connected clients.</param>
+        /// <param name="logger">The logger used to record diagnostic, debug, and error information.</param>
+        /// <param name="repository">The data repository responsible for persisting or enriching captured UI event data.</param>
+        public EventCaptureService(
+            IHubContext<PeekHub> hub,
+            ILogger<EventCaptureService> logger,
+            IUiaPeekRepository repository)
+        {
+            // Validate and assign constructor dependencies.
+            _hub = hub ?? throw new ArgumentNullException(nameof(hub));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+
+            // Create a new CancellationTokenSource to control background worker lifetime.
+            // This token will be used to cooperatively stop the event listener when the service shuts down.
+            var tokenSource = new CancellationTokenSource();
+
+            // Start the background worker that listens for captured events
+            // and processes them asynchronously as they are enqueued.
+            StartEventsListener(tokenSource);
+        }
 
         /// <inheritdoc />
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -183,7 +219,7 @@ namespace UiaPeek.Domain.Middlewares
                 // Check if the keyboard hook failed to install.
                 if (keyboardHook == IntPtr.Zero)
                 {
-                    logger.LogError("Failed to install global keyboard hook. " +
+                    _logger.LogError("Failed to install global keyboard hook. " +
                         "Win32 error code: {ErrorCode}", keyboardError);
                     return;
                 }
@@ -191,7 +227,7 @@ namespace UiaPeek.Domain.Middlewares
                 // Check if the mouse hook failed to install.
                 if (mouseHook == IntPtr.Zero)
                 {
-                    logger.LogError("Failed to install global mouse hook. " +
+                    _logger.LogError("Failed to install global mouse hook. " +
                         "Win32 error code: {ErrorCode}", mouseError);
                     return;
                 }
@@ -199,19 +235,19 @@ namespace UiaPeek.Domain.Middlewares
                 // If neither hook installed, warn the user.
                 if (keyboardHook == IntPtr.Zero && mouseHook == IntPtr.Zero)
                 {
-                    logger.LogWarning("No global hooks could be installed. " +
+                    _logger.LogWarning("No global hooks could be installed. " +
                         "Ensure this process is running in an interactive session with " +
                         "sufficient privileges (e.g., Administrator).");
                     return;
                 }
 
-                logger.LogInformation("Input monitoring service is running.");
+                _logger.LogInformation("Input monitoring service is running.");
 
                 // Ensure that when the service is stopped, a WM_QUIT message
                 // is posted to break out of the message loop gracefully.
                 using var reg = stoppingToken.Register(() =>
                 {
-                    logger.LogInformation("Shutdown requested. Posting quit message to stop input monitoring.");
+                    _logger.LogInformation("Shutdown requested. Posting quit message to stop input monitoring.");
                     PostQuitMessage(0);
                 });
 
@@ -230,14 +266,14 @@ namespace UiaPeek.Domain.Middlewares
                 if (keyboardHook != IntPtr.Zero)
                 {
                     UnhookWindowsHookEx(keyboardHook);
-                    logger.LogInformation("Keyboard hook successfully uninstalled.");
+                    _logger.LogInformation("Keyboard hook successfully uninstalled.");
                 }
 
                 // Clean up the mouse hook if it was installed.
                 if (mouseHook != IntPtr.Zero)
                 {
                     UnhookWindowsHookEx(mouseHook);
-                    logger.LogInformation("Mouse hook successfully uninstalled.");
+                    _logger.LogInformation("Mouse hook successfully uninstalled.");
                 }
             },
             cancellationToken: stoppingToken,
@@ -251,69 +287,21 @@ namespace UiaPeek.Domain.Middlewares
         // and broadcasts the event through SignalR to connected clients.
         private IntPtr ReceiveKeyboardEvent(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            // Identify the message type (key down / key up).
-            var msg = wParam;
-            var isValidCode = nCode >= 0;
-            var isKeyDown = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-            var isKeyUp = msg == WM_KEYUP || msg == WM_SYSKEYUP;
-
-            // Determine if this is a keyboard message worth processing.
-            var isKeyMsg = isValidCode && (isKeyDown || isKeyUp);
-
-            // If it's not a keyboard event, let Windows continue processing as usual.
-            if (!isKeyMsg)
-            {
-                return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-            }
-
             // Extract keyboard event details from the pointer.
-            var kbd = Marshal.PtrToStructure<KeyboardHook>(lParam);
+            var key = Marshal.PtrToStructure<KeyboardHook>(lParam);
 
-            // Variable to hold the resolved key text.
-            string keyText;
+            // Build a unified event record for the captured keyboard event.
+            var eventRecord = EventRecord.ConvertFromKey(
+                key,
+                nCode,
+                wParam,
+                timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
-            // Handle key down and key up events separately.
-            if (isKeyDown)
-            {
-                // Compute human-readable key text on KeyDown.
-                keyText = ResolveKeyName(kbd);
+            // Enqueue the event for processing in the background task.
+            _eventsQueue.Enqueue(eventRecord);
 
-                // Cache the key text for use when the corresponding KeyUp occurs.
-                _keysLog[kbd.vkCode] = keyText;
-            }
-            else
-            {
-                // Attempt to retrieve cached text to ensure consistent KeyUp logging.
-                if (!_keysLog.TryGetValue(kbd.vkCode, out keyText))
-                {
-                    // Fallback: resolve text if no cached entry exists (rare case).
-                    keyText = ResolveKeyName(kbd);
-                }
-
-                // Remove the cached entry to keep memory clean.
-                _keysLog.Remove(kbd.vkCode);
-            }
-
-            // Build a structured event model with context.
-            var message = new RecordingEventModel
-            {
-                Chain = repository.Peek(),
-                Event = isKeyDown ? "Key Down" : "Key Up",
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                Type = "Keyboard",
-                Value = new
-                {
-                    ScanCode = kbd.scanCode,
-                    VirtualKey = kbd.vkCode,
-                    Key = keyText
-                }
-            };
-
-            // Broadcast the captured event to all connected SignalR clients.
-            hub.Clients.All.SendAsync("ReceiveRecordingEvent", new
-            {
-                Value = message
-            });
+            // Signal the background task that a new event is available.
+            _signal.Set();
 
             // Always pass the event to the next hook to avoid disrupting the system.
             return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
@@ -339,73 +327,18 @@ namespace UiaPeek.Domain.Middlewares
             // Extract mouse event details from the pointer.
             var mouse = Marshal.PtrToStructure<MouseHook>(lParam);
 
-            // Handle all mouse events EXCEPT wheel events (vertical/horizontal scroll).
-            if (wParam != WM_MOUSEWHEEL && wParam != WM_MOUSEHWHEEL)
-            {
-                // Build a structured event model with context (clicks, button up/down, etc.).
-                var clickMessage = new RecordingEventModel
-                {
-                    Chain = repository.Peek(x: mouse.pt.X, y: mouse.pt.Y), // UI element at cursor position.
-                    Event = GetMouseEventName(wParam), // Resolve readable event name.
-                    Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                    Type = "Mouse",
-                    Value = new
-                    {
-                        mouse.pt.X,
-                        mouse.pt.Y
-                    }
-                };
+            // Build a unified event record for the captured mouse event.
+            var eventRecord = EventRecord.ConvertFromMouse(
+                mouse,
+                nCode,
+                wParam,
+                timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
-                // Broadcast the captured mouse click event to all connected SignalR clients.
-                hub.Clients.All.SendAsync("ReceiveRecordingEvent", new { Value = clickMessage });
+            // Enqueue the event for processing in the background task.
+            _eventsQueue.Enqueue(eventRecord);
 
-                // Always continue the hook chain.
-                return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-            }
-
-            // Handle vertical & horizontal wheel events.
-            // HIGHWORD(mouseData) is a signed delta (in multiples of WHEEL_DELTA = 120).
-            var delta = unchecked((short)((mouse.mouseData >> 16) & 0xFFFF));
-            var notches = Math.Abs(delta) / WHEEL_DELTA;
-
-            // High-resolution devices may report deltas smaller than WHEEL_DELTA.
-            // Normalize to at least 1 notch for consistency.
-            if (notches == 0)
-            {
-                notches = 1;
-            }
-
-            // Determine scroll direction based on event type and delta sign.
-            var direction = string.Empty;
-            if (wParam == WM_MOUSEWHEEL)
-            {
-                direction = delta > 0 ? "Up" : "Down";
-            }
-            else if (wParam == WM_MOUSEHWHEEL)
-            {
-                direction = delta > 0 ? "Right" : "Left";
-            }
-
-            // Build a structured wheel event with scroll details.
-            var wheelMessage = new RecordingEventModel
-            {
-                Chain = repository.Peek(x: mouse.pt.X, y: mouse.pt.Y),
-                Event = $"{GetMouseEventName(wParam)} {direction}",
-                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                Type = "Mouse",
-                Value = new
-                {
-                    Notches = notches, // Number of notches scrolled.
-                    mouse.pt.X,
-                    mouse.pt.Y
-                }
-            };
-
-            // Broadcast the captured wheel event to all connected SignalR clients.
-            hub.Clients.All.SendAsync(method: "ReceiveRecordingEvent", arg1: new
-            {
-                Value = wheelMessage
-            });
+            // Signal the background task that a new event is available.
+            _signal.Set();
 
             // Continue the hook chain.
             return CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
@@ -439,6 +372,150 @@ namespace UiaPeek.Domain.Middlewares
             return string.Equals(name, "Space", StringComparison.OrdinalIgnoreCase)
                 ? "space"
                 : name;
+        }
+
+        // Processes a captured keyboard event record, builds a structured event model,
+        // and broadcasts it to connected SignalR clients.
+        private void ResolveKeyboardEvent(EventRecord eventRecord)
+        {
+            // Validate the hook code and event type.
+            var isValidCode = eventRecord.NCode >= 0;
+            var isKeyDown = eventRecord.WParam == WM_KEYDOWN || eventRecord.WParam == WM_SYSKEYDOWN;
+            var isKeyUp = eventRecord.WParam == WM_KEYUP || eventRecord.WParam == WM_SYSKEYUP;
+
+            // Determine if this is a keyboard message worth processing.
+            var isKeyMsg = isValidCode && (isKeyDown || isKeyUp);
+
+            // If it's not a keyboard event, let Windows continue processing as usual.
+            if (!isKeyMsg)
+            {
+                return;
+            }
+
+            // Extract keyboard event details from the pointer.
+            //var kbd = Marshal.PtrToStructure<KeyboardHook>(eventRecord.LParam);
+            var kbd = eventRecord.EventData.Key;
+
+            // Variable to hold the resolved key text.
+            string keyText;
+
+            // Handle key down and key up events separately.
+            if (isKeyDown)
+            {
+                // Compute human-readable key text on KeyDown.
+                keyText = ResolveKeyName(kbd);
+
+                // Cache the key text for use when the corresponding KeyUp occurs.
+                _keysLog[kbd.vkCode] = keyText;
+            }
+            else
+            {
+                // Attempt to retrieve cached text to ensure consistent KeyUp logging.
+                if (!_keysLog.TryGetValue(kbd.vkCode, out keyText))
+                {
+                    // Fallback: resolve text if no cached entry exists (rare case).
+                    keyText = ResolveKeyName(kbd);
+                }
+
+                // Remove the cached entry to keep memory clean.
+                _keysLog.Remove(kbd.vkCode);
+            }
+
+            // Build a structured event model with context.
+            var message = new RecordingEventModel
+            {
+                Chain = _repository.Peek(),
+                Event = isKeyDown ? "Key Down" : "Key Up",
+                Timestamp = eventRecord.Timestamp,
+                Type = "Keyboard",
+                Value = new
+                {
+                    ScanCode = kbd.scanCode,
+                    VirtualKey = kbd.vkCode,
+                    Key = keyText
+                }
+            };
+
+            // Broadcast the captured event to all connected SignalR clients.
+            _hub.Clients.All.SendAsync("ReceiveRecordingEvent", new
+            {
+                Value = message
+            });
+        }
+
+        // Processes a captured mouse event record, builds a structured event model,
+        // and broadcasts it to connected SignalR clients.
+        private void ResolveMouseEvent(EventRecord eventRecord)
+        {
+            var mouse = eventRecord.EventData.Mouse;
+
+            // Handle all mouse events EXCEPT wheel events (vertical/horizontal scroll).
+            if (eventRecord.WParam != WM_MOUSEWHEEL && eventRecord.WParam != WM_MOUSEHWHEEL)
+            {
+                // Build a structured event model with context (clicks, button up/down, etc.).
+                var clickMessage = new RecordingEventModel
+                {
+                    Chain = _repository.Peek(x: mouse.pt.X, y: mouse.pt.Y), // UI element at cursor position.
+                    Event = GetMouseEventName(eventRecord.WParam),         // Resolve readable event name.
+                    Timestamp = eventRecord.Timestamp,
+                    Type = "Mouse",
+                    Value = new
+                    {
+                        mouse.pt.X,
+                        mouse.pt.Y
+                    }
+                };
+
+                // Broadcast the captured mouse click event to all connected SignalR clients.
+                _hub.Clients.All.SendAsync("ReceiveRecordingEvent", new { Value = clickMessage });
+
+                // Exit after handling non-wheel events.
+                return;
+            }
+
+            // Handle vertical & horizontal wheel events.
+            // HIGHWORD(mouseData) is a signed delta (in multiples of WHEEL_DELTA = 120).
+            var delta = unchecked((short)((mouse.mouseData >> 16) & 0xFFFF));
+            var notches = Math.Abs(delta) / WHEEL_DELTA;
+
+            // High-resolution devices may report deltas smaller than WHEEL_DELTA.
+            // Normalize to at least 1 notch for consistency.
+            if (notches == 0)
+            {
+                notches = 1;
+            }
+
+            // Determine scroll direction based on event type and delta sign.
+            var direction = string.Empty;
+            if (eventRecord.WParam == WM_MOUSEWHEEL)
+            {
+                direction = delta > 0 ? "Up" : "Down";
+            }
+            else if (eventRecord.WParam == WM_MOUSEHWHEEL)
+            {
+                direction = delta > 0 ? "Right" : "Left";
+            }
+
+            // Build a structured wheel event with scroll details.
+            var wheelMessage = new RecordingEventModel
+            {
+                Chain = _repository.Peek(x: mouse.pt.X, y: mouse.pt.Y),
+                Event = $"{GetMouseEventName(eventRecord.WParam)} {direction}",
+                Timestamp = eventRecord.Timestamp,
+                Type = "Mouse",
+                Value = new
+                {
+                    Notches = notches, // Number of notches scrolled.
+                    mouse.pt.X,
+                    mouse.pt.Y
+                }
+            };
+
+            // Broadcast the captured wheel event to all connected SignalR clients.
+            _hub.Clients.All.SendAsync(method: "ReceiveRecordingEvent", arg1: new
+            {
+                Value = wheelMessage
+            });
         }
 
         // Converts the current key press described by a low-level keyboard hook struct
@@ -671,9 +748,97 @@ namespace UiaPeek.Domain.Middlewares
             // Return the hook handle (or IntPtr.Zero if both attempts failed)
             return hook;
         }
+
+        // Starts the background worker that waits for a signal and drains the events queue,
+        // dispatching each record to the appropriate resolver. The worker runs until the
+        // provided tokenSource is canceled.
+        private void StartEventsListener(CancellationTokenSource tokenSource)
+        {
+            // Local worker loop: blocks on _signal, drains _eventsQueue, routes by EventType.
+            void StartLoop(CancellationTokenSource cts)
+            {
+                // Optional: when cancellation is requested, wake the waiter so the loop can exit promptly.
+                using var _ = cts.Token.Register(() => _signal.Set());
+
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    // Wait up to 50ms to re-check cancellation periodically.
+                    _signal.WaitOne(50);
+
+                    // Drain the queue; keep exceptions isolated per event.
+                    while (_eventsQueue.TryDequeue(out var eventRecord))
+                    {
+                        try
+                        {
+                            if (eventRecord.EventType == EventType.Mouse)
+                            {
+                                ResolveMouseEvent(eventRecord);
+                            }
+                            else if (eventRecord.EventType == EventType.Keyboard)
+                            {
+                                ResolveKeyboardEvent(eventRecord);
+                            }
+                            else
+                            {
+                                // Unknown/unsupported event type—log at Debug/Information based on policy.
+                                _logger.LogDebug("Ignored event with unsupported type: {Type}", eventRecord.EventType);
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            // Per-event fault isolation so one bad item doesn't kill the loop.
+                            _logger.LogError(e,
+                                "Failed to resolve event. Type: {Type}, Timestamp: {Ts}",
+                                eventRecord.EventType, eventRecord.Timestamp);
+                        }
+                    }
+                }
+            }
+
+            // Start the worker on a dedicated thread-pool thread and pass the token for cooperative cancellation.
+            Task.Factory.StartNew(() =>
+                {
+                    try
+                    {
+                        StartLoop(tokenSource);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected on cancellation.
+                    }
+                    catch (Exception ex)
+                    {
+                        // Unexpected top-level failure—log and let the service decide how to recover.
+                        _logger.LogCritical(ex, "Event processing worker crashed.");
+                    }
+                    finally
+                    {
+                        _logger.LogInformation("Event processing worker exited.");
+                    }
+                },
+                tokenSource.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default
+            )
+            // Once the worker finishes for any reason, dispose the CTS.
+            .ContinueWith(_ => tokenSource.Dispose(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default
+            );
+        }
         #endregion
 
         #region *** Structs   ***
+        private enum EventType : byte { Mouse = 1, Keyboard = 2 }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct EventPayload
+        {
+            [FieldOffset(0)] public MouseHook Mouse;
+            [FieldOffset(0)] public KeyboardHook Key;
+        }
+
         /// <summary>
         /// Contains information about a low-level keyboard input event.
         /// Used with WH_KEYBOARD_LL hooks.
@@ -798,6 +963,93 @@ namespace UiaPeek.Domain.Middlewares
             /// The Y coordinate, in pixels.
             /// </summary>
             public int Y;
+        }
+
+        /// <summary>
+        /// Represents a single recorded event within the system,
+        /// capturing all relevant low-level and contextual information
+        /// such as event data, timing, and native parameters.
+        /// </summary>
+        private struct EventRecord
+        {
+            /// <summary>
+            /// The raw data associated with the event.
+            /// This object may contain metadata, input parameters,
+            /// or serialized information relevant to event handling logic.
+            /// </summary>
+            public EventPayload EventData;
+
+            /// <summary>
+            /// A textual identifier describing the event category or nature,
+            /// such as "mouse", "keyboard", or other custom-defined types.
+            /// </summary>
+            public EventType EventType;
+
+            /// <summary>
+            /// The native <see cref="IntPtr"/> representing the event’s additional message-specific information.
+            /// Commonly used in Windows hook callbacks to store extra parameters (e.g., mouse position, key code).
+            /// </summary>
+            public IntPtr LParam;
+
+            /// <summary>
+            /// The hook code that indicates the type of hook event received.
+            /// Typically provided by the system when using low-level Windows hooks.
+            /// </summary>
+            public int NCode;
+
+            /// <summary>
+            /// The timestamp (in ticks or milliseconds) representing when the event occurred.
+            /// Used for chronological ordering and timing analysis of recorded events.
+            /// </summary>
+            public long Timestamp;
+
+            /// <summary>
+            /// The native <see cref="IntPtr"/> representing the event’s message identifier.
+            /// Often used to specify the type of system message (e.g., WM_KEYDOWN, WM_MOUSEMOVE).
+            /// </summary>
+            public IntPtr WParam;
+
+            /// <summary>
+            /// Creates a new <see cref="EventRecord"/> from a keyboard hook event.
+            /// </summary>
+            /// <param name="key">The keyboard hook information captured by the low-level callback.</param>
+            /// <param name="nCode">The system-provided hook code identifying the event type.</param>
+            /// <param name="wParam">The Windows message identifier (e.g., WM_KEYDOWN, WM_KEYUP).</param>
+            /// <param name="timestamp">The timestamp (in ticks or milliseconds) when the event was captured.</param>
+            /// <returns>A fully constructed <see cref="EventRecord"/> representing the keyboard event.</returns>
+            public static EventRecord ConvertFromKey(in KeyboardHook key, int nCode, IntPtr wParam, long timestamp)
+            {
+                return new EventRecord
+                {
+                    EventType = EventType.Keyboard,
+                    EventData = new EventPayload { Key = key },
+                    LParam = IntPtr.Zero,               // Not used for keyboard events in this context
+                    NCode = nCode,
+                    Timestamp = timestamp,
+                    WParam = wParam                     // Message type (WM_KEYDOWN/WM_KEYUP)
+                };
+            }
+
+            /// <summary>
+            /// Creates a new <see cref="EventRecord"/> from a mouse hook event.
+            /// </summary>
+            /// <param name="mouse">The mouse hook information captured by the low-level callback.</param>
+            /// <param name="nCode">The system-provided hook code identifying the event type.</param>
+            /// <param name="wParam">The Windows message identifier (e.g., WM_LBUTTONDOWN, WM_MOUSEMOVE).</param>
+            /// <param name="timestamp">The timestamp (in ticks or milliseconds) when the event was captured.</param>
+            /// <returns>A fully constructed <see cref="EventRecord"/> representing the mouse event.</returns>
+            public static EventRecord ConvertFromMouse(in MouseHook mouse, int nCode, IntPtr wParam, long timestamp)
+            {
+                return new EventRecord
+                {
+                    EventType = EventType.Mouse,
+                    EventData = new EventPayload { Mouse = mouse },
+                    LParam = IntPtr.Zero,               // Not used for mouse events in this context
+                    NCode = nCode,
+                    WParam = wParam,                    // Message type (WM_MOUSEMOVE, etc.)
+                    Timestamp = timestamp
+                };
+            }
         }
         #endregion
     }
