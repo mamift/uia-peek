@@ -393,7 +393,6 @@ namespace UiaPeek.Domain.Middlewares
             }
 
             // Extract keyboard event details from the pointer.
-            //var kbd = Marshal.PtrToStructure<KeyboardHook>(eventRecord.LParam);
             var kbd = eventRecord.EventData.Key;
 
             // Variable to hold the resolved key text.
