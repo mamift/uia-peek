@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Common.Domain.Extensions;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -121,7 +123,7 @@ namespace UiaPeek.Domain.Extensions
         }
 
         /// <summary>
-        /// Builds a UIA XPath-like locator string from a <see cref="UiaChainModel"/>.
+        /// Builds a UIA XPath-like locator string from a <see cref="RecorderChainModel"/>.
         /// </summary>
         /// <param name="chain">The chain containing the ordered UIA nodes (trigger → ancestors).</param>
         /// <returns>A locator string beginning with <c>/Desktop</c> that walks the chain using <c>/</c> for contiguous ancestors and <c>//</c> when gaps are present.</returns>

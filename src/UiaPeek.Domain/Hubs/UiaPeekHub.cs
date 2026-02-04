@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 
 using UiaPeek.Domain.Models;
 
+using Common.Domain.Models;
+
 namespace UiaPeek.Domain.Hubs
 {
     /// <summary>
@@ -13,7 +15,7 @@ namespace UiaPeek.Domain.Hubs
     /// Provides real-time communication for heartbeat checks and
     /// ancestor chain inspection at specific screen coordinates.
     /// </summary>
-    public class PeekHub(IUiaPeekRepository repository) : Hub
+    public class UiaPeekHub(IUiaPeekRepository repository) : Hub
     {
         // Collection of active recording sessions keyed by a unique session id.
         private readonly static ConcurrentDictionary<string, ConcurrentBag<UiaChainModel>> s_sessions = new();
@@ -35,7 +37,7 @@ namespace UiaPeek.Domain.Hubs
         // Resolves the UIA element at the given screen coordinates and
         // returns its ancestor chain back to the caller.
         [HubMethodName(name: $"{nameof(SendPeek)}At")]
-        public Task SendPeek(UiaPointModel point)
+        public Task SendPeek(RecorderPointModel point)
         {
             // Query the repository to get the UIA ancestor chain at the given coordinates.
             var peekResponse = _repository.Peek(x: point.XPos, y: point.YPos);

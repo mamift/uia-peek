@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.14.36414.22
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11217.181
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UiaPeek", "UiaPeek\UiaPeek.csproj", "{772010DC-09A4-4C14-994D-F30115C89C3D}"
 EndProject
@@ -25,6 +25,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{4C41
 		..\.github\workflows\release-pipline.yml = ..\.github\workflows\release-pipline.yml
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChromiumPeek", "ChromiumPeek\ChromiumPeek.csproj", "{E6FB3FF3-C46A-A959-D3BA-B5991C099164}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common.Domain", "Common.Domain\Common.Domain.csproj", "{017FB65E-FE23-4F8F-BA56-56BE76808944}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChromiumPeek.Domain", "ChromiumPeek.Domain\ChromiumPeek.Domain.csproj", "{B234C607-2A88-42E0-A2C4-060B345690F5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +49,18 @@ Global
 		{6839DD96-06E9-4EAC-96F0-22A3CCF8093F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6839DD96-06E9-4EAC-96F0-22A3CCF8093F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6839DD96-06E9-4EAC-96F0-22A3CCF8093F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6FB3FF3-C46A-A959-D3BA-B5991C099164}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6FB3FF3-C46A-A959-D3BA-B5991C099164}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6FB3FF3-C46A-A959-D3BA-B5991C099164}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6FB3FF3-C46A-A959-D3BA-B5991C099164}.Release|Any CPU.Build.0 = Release|Any CPU
+		{017FB65E-FE23-4F8F-BA56-56BE76808944}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{017FB65E-FE23-4F8F-BA56-56BE76808944}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{017FB65E-FE23-4F8F-BA56-56BE76808944}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{017FB65E-FE23-4F8F-BA56-56BE76808944}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B234C607-2A88-42E0-A2C4-060B345690F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B234C607-2A88-42E0-A2C4-060B345690F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B234C607-2A88-42E0-A2C4-060B345690F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B234C607-2A88-42E0-A2C4-060B345690F5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

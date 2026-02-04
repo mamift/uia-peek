@@ -1,5 +1,8 @@
 using CommandBridge;
 
+using Common.Domain.Extensions;
+using Common.Domain.Formatters;
+
 using G4.Converters;
 
 using Microsoft.AspNetCore.Builder;
@@ -17,8 +20,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using UiaPeek.Domain;
-using UiaPeek.Domain.Extensions;
-using UiaPeek.Domain.Formatters;
 using UiaPeek.Domain.Hubs;
 using UiaPeek.Domain.Middlewares;
 
@@ -36,7 +37,7 @@ if (command != null)
 }
 
 // Write the ASCII logo for the Hub Controller with the specified version.
-ControllerUtilities.WriteAsciiLogo(version: "0000.00.00.0000");
+ControllerUtilities.WriteUiaAsciiLogo(version: "0000.00.00.0000");
 
 // Create a new instance of the WebApplicationBuilder with the provided command-line arguments.
 var builder = WebApplication.CreateBuilder(args);
@@ -195,7 +196,7 @@ builder.Services
     });
 
 // Add a hosted service for capturing global keyboard and mouse events.
-builder.Services.AddHostedService<EventCaptureService>();
+builder.Services.AddHostedService<UiaEventCaptureService>();
 
 // Add IHttpClientFactory to the service collection for making HTTP requests.
 builder.Services.AddHttpClient();
@@ -236,7 +237,7 @@ app.MapDefaultControllerRoute();
 app.MapControllers();
 
 // Add the SignalR hub to the application for real-time communication with clients and other services
-app.MapHub<PeekHub>($"/hub/v4/g4/peek").RequireCors("CorsPolicy");
+app.MapHub<UiaPeekHub>($"/hub/v4/g4/peek").RequireCors("CorsPolicy");
 #endregion
 
 // Start the application and wait for it to finish.

@@ -19,9 +19,9 @@ namespace UiaPeek.Domain.Middlewares
     /// Background service that installs and manages global low-level keyboard
     /// and mouse hooks using the Win32 API.  
     /// Captured input events are translated into structured models and
-    /// broadcast in real time to connected SignalR clients via <see cref="PeekHub"/>.
+    /// broadcast in real time to connected SignalR clients via <see cref="UiaPeekHub"/>.
     /// </summary>
-    public sealed class EventCaptureService : BackgroundService
+    public sealed class UiaEventCaptureService : BackgroundService
     {
         #region *** User32    ***
         // Passes the hook information to the next hook procedure in the current hook chain.
@@ -149,14 +149,14 @@ namespace UiaPeek.Domain.Middlewares
         private readonly ConcurrentQueue<EventRecord> _eventsQueue = new();
 
         // SignalR hub context for broadcasting captured input events to connected clients.
-        private readonly IHubContext<PeekHub> _hub;
+        private readonly IHubContext<UiaPeekHub> _hub;
 
         // Delegate reference for the low-level keyboard hook callback.  
         // Must be kept alive to prevent garbage collection while the hook is active.
         private HookProcess _keyboardCallback;
 
         // Logger for diagnostics, error reporting, and lifecycle information.
-        private readonly ILogger<EventCaptureService> _logger;
+        private readonly ILogger<UiaEventCaptureService> _logger;
 
         // Delegate reference for the low-level mouse hook callback.  
         // Must be kept alive to prevent garbage collection while the hook is active.
@@ -170,15 +170,15 @@ namespace UiaPeek.Domain.Middlewares
         #endregion
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="EventCaptureService"/> class
+        /// Initializes a new instance of the <see cref="UiaEventCaptureService"/> class
         /// and starts the background listener responsible for processing captured UI events.
         /// </summary>
         /// <param name="hub">The SignalR hub context used to broadcast resolved UI events to connected clients.</param>
         /// <param name="logger">The logger used to record diagnostic, debug, and error information.</param>
         /// <param name="repository">The data repository responsible for persisting or enriching captured UI event data.</param>
-        public EventCaptureService(
-            IHubContext<PeekHub> hub,
-            ILogger<EventCaptureService> logger,
+        public UiaEventCaptureService(
+            IHubContext<UiaPeekHub> hub,
+            ILogger<UiaEventCaptureService> logger,
             IUiaPeekRepository repository)
         {
             // Validate and assign constructor dependencies.
@@ -421,7 +421,7 @@ namespace UiaPeek.Domain.Middlewares
             }
 
             // Build a structured event model with context.
-            var message = new RecordingEventModel
+            var message = new UiaEventModel
             {
                 Chain = _repository.Peek(),
                 Event = isKeyDown ? "Key Down" : "Key Up",
@@ -452,7 +452,7 @@ namespace UiaPeek.Domain.Middlewares
             if (eventRecord.WParam != WM_MOUSEWHEEL && eventRecord.WParam != WM_MOUSEHWHEEL)
             {
                 // Build a structured event model with context (clicks, button up/down, etc.).
-                var clickMessage = new RecordingEventModel
+                var clickMessage = new UiaEventModel
                 {
                     Chain = _repository.Peek(x: mouse.pt.X, y: mouse.pt.Y), // UI element at cursor position.
                     Event = GetMouseEventName(eventRecord.WParam),         // Resolve readable event name.
@@ -496,7 +496,7 @@ namespace UiaPeek.Domain.Middlewares
             }
 
             // Build a structured wheel event with scroll details.
-            var wheelMessage = new RecordingEventModel
+            var wheelMessage = new UiaEventModel
             {
                 Chain = _repository.Peek(x: mouse.pt.X, y: mouse.pt.Y),
                 Event = $"{GetMouseEventName(eventRecord.WParam)} {direction}",
