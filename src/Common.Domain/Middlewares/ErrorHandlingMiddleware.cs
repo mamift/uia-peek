@@ -1,4 +1,6 @@
-﻿using G4.Extensions;
+﻿using Common.Domain.Models;
+
+using G4.Extensions;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -14,9 +16,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-using UiaPeek.Domain.Models;
-
-namespace UiaPeek.Domain.Middlewares
+namespace Common.Domain.Middlewares
 {
     /// <summary>
     /// Middleware to handle exceptions and enhance error responses in the HTTP request pipeline.

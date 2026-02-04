@@ -1,3 +1,5 @@
+using ChromiumPeek.Domain.Hubs;
+
 using CommandBridge;
 
 using Common.Domain.Extensions;
@@ -14,14 +16,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
 
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using UiaPeek.Domain;
-using UiaPeek.Domain.Hubs;
-using UiaPeek.Domain.Middlewares;
 
 // Attempt to resolve a command from the provided arguments.
 var command = CommandBase.FindCommand(args);
@@ -37,7 +39,7 @@ if (command != null)
 }
 
 // Write the ASCII logo for the Hub Controller with the specified version.
-ControllerUtilities.WriteUiaAsciiLogo(version: "0000.00.00.0000");
+ControllerUtilities.WriteChromiumAsciiLogo(version: "0000.00.00.0000");
 
 // Create a new instance of the WebApplicationBuilder with the provided command-line arguments.
 var builder = WebApplication.CreateBuilder(args);
@@ -196,14 +198,14 @@ builder.Services
     });
 
 // Add a hosted service for capturing global keyboard and mouse events.
-builder.Services.AddHostedService<UiaEventCaptureService>();
+//builder.Services.AddHostedService<EventCaptureService>();
 
 // Add IHttpClientFactory to the service collection for making HTTP requests.
 builder.Services.AddHttpClient();
 #endregion
 
 #region *** Dependencies  ***
-builder.Services.AddTransient<IUiaPeekRepository, UiaPeekRepository>();
+builder.Services.AddTransient<IChromiumPeekRepository, ChromiumPeekRepository>();
 #endregion
 
 #region *** Configuration ***
@@ -237,8 +239,84 @@ app.MapDefaultControllerRoute();
 app.MapControllers();
 
 // Add the SignalR hub to the application for real-time communication with clients and other services
-app.MapHub<UiaPeekHub>($"/hub/v4/g4/peek").RequireCors("CorsPolicy");
+app.MapHub<ChromiumPeekHub>($"/hub/v4/g4/peek").RequireCors("CorsPolicy");
 #endregion
+
+
+StartChromiumWithExtension();
 
 // Start the application and wait for it to finish.
 await app.RunAsync();
+
+
+static void StartChromiumWithExtension()
+{
+    var baseDir = AppContext.BaseDirectory;
+    var extensionDir = Path.Combine(baseDir, "ChromiumExtension");
+
+    if (!Directory.Exists(extensionDir))
+    {
+        Console.WriteLine($"[ChromiumPeek] Extension folder not found: {extensionDir}");
+        return;
+    }
+
+    var tempProfileRoot = Path.Combine(Path.GetTempPath(), "ChromiumPeek");
+    Directory.CreateDirectory(tempProfileRoot);
+
+    var userDataDir = Path.Combine(tempProfileRoot, Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(userDataDir);
+
+    var browserCandidates = new[]
+    {
+        @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            @"Microsoft\Edge\Application\msedge.exe")
+    };
+
+    var browserPath = browserCandidates.FirstOrDefault(File.Exists);
+    if (browserPath is null)
+    {
+        Console.WriteLine("[ChromiumPeek] Could not find Chrome/Edge executable.");
+        return;
+    }
+
+    const int remoteDebuggingPort = 9222;
+    var initialUrl = "https://example.com"; // TODO: your app
+
+    var psi = new ProcessStartInfo
+    {
+        FileName = browserPath,
+        UseShellExecute = false,
+        CreateNoWindow = false
+    };
+
+    // No manual quotes needed anywhere here
+    psi.ArgumentList.Add($"--remote-debugging-port={remoteDebuggingPort}");
+    psi.ArgumentList.Add($"--user-data-dir={userDataDir}");
+    psi.ArgumentList.Add($"--load-extension={extensionDir}");
+    // optional, once it's stable:
+    // psi.ArgumentList.Add($"--disable-extensions-except={extensionDir}");
+    psi.ArgumentList.Add("--no-first-run");
+    psi.ArgumentList.Add("--no-default-browser-check");
+    psi.ArgumentList.Add(initialUrl);
+
+    Console.WriteLine("[ChromiumPeek] Starting browser:");
+    Console.WriteLine("  " + psi.FileName);
+    foreach (var a in psi.ArgumentList)
+    {
+        Console.WriteLine("    " + a);
+    }
+
+    try
+    {
+        Process.Start(psi);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("[ChromiumPeek] Failed to start browser: " + ex);
+    }
+}
+
+

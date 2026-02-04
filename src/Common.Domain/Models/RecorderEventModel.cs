@@ -1,19 +1,19 @@
 ﻿using System;
 
-namespace UiaPeek.Domain.Models
+namespace Common.Domain.Models
 {
     /// <summary>
     /// Represents a single event recorded during a UI automation session.
     /// Captures details about the event type, its timing, related UI element chain,
     /// and any associated value payload.
     /// </summary>
-    public class RecordingEventModel
+    public class RecorderEventModel<T>
     {
         /// <summary>
         /// Gets or sets the UI Automation chain associated with this event.
         /// This provides the hierarchical element path where the event occurred.
         /// </summary>
-        public UiaChainModel Chain { get; set; }
+        public T Chain { get; set; }
 
         /// <summary>
         /// Gets or sets the specific event identifier or name (e.g., "Click", "KeyDown").

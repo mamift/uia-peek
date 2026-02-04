@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Common.Domain.Extensions;
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -121,7 +123,7 @@ namespace UiaPeek.Domain.Extensions
         }
 
         /// <summary>
-        /// Builds a UIA XPath-like locator string from a <see cref="UiaChainModel"/>.
+        /// Builds a UIA XPath-like locator string from a <see cref="RecorderChainModel"/>.
         /// </summary>
         /// <param name="chain">The chain containing the ordered UIA nodes (trigger → ancestors).</param>
         /// <returns>A locator string beginning with <c>/Desktop</c> that walks the chain using <c>/</c> for contiguous ancestors and <c>//</c> when gaps are present.</returns>
@@ -156,10 +158,20 @@ namespace UiaPeek.Domain.Extensions
                 // Determine presence and validity of identifiers.
                 var hasName = !string.IsNullOrEmpty(name);
                 var hasAutomationId = !string.IsNullOrEmpty(automationId);
+                var isUwp = node
+                    .ClassName?
+                    .Equals("Windows.UI.Core.CoreWindow", StringComparison.OrdinalIgnoreCase) == true;
 
                 // Check if identifiers are "broken" (contain quotes).
                 var nameBroken = hasName && IsBroken(name);
                 var automationIdBroken = hasAutomationId && IsBroken(automationId);
+
+                // UWP apps have unreliable AutomationIds -> skip and mark gap.
+                if (isUwp)
+                {
+                    isGap = true;
+                    continue;
+                }
 
                 // LAST node with no identifiers -> emit //ControlType and finish.
                 if (isLast && !hasName && !hasAutomationId)
@@ -176,14 +188,14 @@ namespace UiaPeek.Domain.Extensions
                 }
 
                 // Choose separator: '//' if a gap was recorded, otherwise '/'.
-                var sep = isGap ? "//" : "/";
+                var separator = isGap ? "//" : "/";
                 isGap = false;
 
                 // Prefer AutomationId if present and safe.
                 if (hasAutomationId && !automationIdBroken)
                 {
                     xpathBuilder
-                        .Append(sep)
+                        .Append(separator)
                         .Append(control)
                         .Append($"[@AutomationId='{automationId}']");
                 }
@@ -191,7 +203,7 @@ namespace UiaPeek.Domain.Extensions
                 else if (hasName && !nameBroken)
                 {
                     xpathBuilder
-                        .Append(sep)
+                        .Append(separator)
                         .Append(control)
                         .Append($"[@Name='{name}']");
                 }
@@ -200,7 +212,7 @@ namespace UiaPeek.Domain.Extensions
                 else
                 {
                     xpathBuilder
-                        .Append(sep)
+                        .Append(separator)
                         .Append(control)
                         .Append($"[@Name='~BROKEN~']");
                 }
@@ -280,6 +292,8 @@ namespace UiaPeek.Domain.Extensions
                 ClassName = string.IsNullOrWhiteSpace(className) ? null : className,
                 ControlType = string.IsNullOrWhiteSpace(controlType) ? null : controlType,
                 ControlTypeId = controlTypeId,
+                Element = element,
+                FrameworkId = Safe(() => element.CurrentFrameworkId),
                 Machine = machine,
                 Name = string.IsNullOrWhiteSpace(name) ? null : name,
                 Patterns = [.. patterns],

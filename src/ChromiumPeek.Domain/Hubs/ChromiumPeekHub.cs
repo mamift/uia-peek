@@ -4,22 +4,24 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 
-using UiaPeek.Domain.Models;
+using Common.Domain.Models;
+using UiaPeek.Domain;
+using ChromiumPeek.Domain.Models;
 
-namespace UiaPeek.Domain.Hubs
+namespace ChromiumPeek.Domain.Hubs
 {
     /// <summary>
     /// SignalR hub for handling UI Automation (UIA) peek operations.
     /// Provides real-time communication for heartbeat checks and
     /// ancestor chain inspection at specific screen coordinates.
     /// </summary>
-    public class PeekHub(IUiaPeekRepository repository) : Hub
+    public class ChromiumPeekHub(IChromiumPeekRepository repository) : Hub
     {
         // Collection of active recording sessions keyed by a unique session id.
-        private readonly static ConcurrentDictionary<string, ConcurrentBag<UiaChainModel>> s_sessions = new();
+        private readonly static ConcurrentDictionary<string, ConcurrentBag<ChromiumChainModel>> s_sessions = new();
 
         // Repository used for querying UIA elements at coordinates.
-        private readonly IUiaPeekRepository _repository = repository;
+        private readonly IChromiumPeekRepository _repository = repository;
 
         // Sends a heartbeat message to the caller.
         // This can be used by clients to verify the connection is alive.
@@ -35,7 +37,7 @@ namespace UiaPeek.Domain.Hubs
         // Resolves the UIA element at the given screen coordinates and
         // returns its ancestor chain back to the caller.
         [HubMethodName(name: $"{nameof(SendPeek)}At")]
-        public Task SendPeek(UiaPointModel point)
+        public Task SendPeek(RecorderPointModel point)
         {
             // Query the repository to get the UIA ancestor chain at the given coordinates.
             var peekResponse = _repository.Peek(x: point.XPos, y: point.YPos);

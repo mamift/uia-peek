@@ -1,4 +1,6 @@
-﻿using UiaPeek.Domain.Extensions;
+﻿using Common.Domain.Models;
+
+using UiaPeek.Domain.Extensions;
 using UiaPeek.Domain.Models;
 
 using UIAutomationClient;
@@ -21,7 +23,7 @@ namespace UiaPeek.Domain
             var chain = automation.NewAncestorChain(element) ?? new UiaChainModel();
 
             // Set the point information in the chain model if it exists.
-            chain.Point = new UiaPointModel { XPos = x, YPos = y };
+            chain.Point = new RecorderPointModel { XPos = x, YPos = y };
 
             // Build the absolute XPath locator for the ancestor chain.
             chain.Locator = chain.ResolveLocator();

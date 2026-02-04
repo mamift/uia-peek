@@ -1,11 +1,11 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace UiaPeek.Domain.Models
+namespace Common.Domain.Models
 {
     /// <summary>
     /// Represents a screen coordinate point in pixels.
     /// </summary>
-    public class UiaPointModel
+    public class RecorderPointModel
     {
         /// <summary>
         /// The horizontal screen coordinate (in pixels).
