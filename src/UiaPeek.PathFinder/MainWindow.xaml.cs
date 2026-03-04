@@ -115,12 +115,14 @@ namespace UiaPeek.PathFinder
             // Update the button's label to reflect the new state
             SetLabel(startStopButton);
 
+            var text = FilterTextBox.Text;
             // Launch a background task to monitor the cursor position
             Task.Run(() =>
             {
                 // Continue running until the toggle is set to false
                 while (_isRunning)
                 {
+                    Dispatcher.Invoke(() => text = FilterTextBox.Text);
                     // Get the current physical cursor position (screen coordinates)
                     GetPhysicalCursorPos(out TagPoint point);
 
@@ -129,7 +131,8 @@ namespace UiaPeek.PathFinder
                     
                     var possibleProcessName = chain.TopWindow.GetPossibleProcessName();
 
-                    if (FilterTextBox.Text.Equals(possibleProcessName, StringComparison.CurrentCultureIgnoreCase)) {
+                    
+                    if (text.Equals(possibleProcessName, StringComparison.CurrentCultureIgnoreCase)) {
                         this.Writer.SerializeAndWrite(chain, possibleProcessName);
                     }
 

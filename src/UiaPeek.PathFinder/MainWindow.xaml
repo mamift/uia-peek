@@ -132,7 +132,7 @@
 
     <StackPanel Orientation="Vertical" Margin="0,250,0,0">
            <Label>Process filter (only log for the following process name):</Label>
-           <TextBox x:Name="FilterTextBox" Height="30" FontFamily="Calibri"></TextBox>
+           <TextBox x:Name="FilterTextBox" Height="30" FontFamily="Calibri" Text="iomsclient"></TextBox>
            <ListBox Visibility="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ShowProcessesListBox}" 
                     ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=Processes}">
            </ListBox>

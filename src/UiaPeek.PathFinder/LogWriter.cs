@@ -50,12 +50,10 @@ public class LogWriter: IDisposable
 
     public void SerializeAndWrite<T>(T data, string? processName)
     {
-        XDocument doc = XDocument.Load(FilePath);
-
         var serialized = Serializer.Serialize(data);
         var dataElement = new XElement("Data", XElement.Parse(serialized));
         dataElement.SetAttributeValue("ProcessName", processName);
-        doc.Root?.Add(dataElement);
+        Document.Root?.Add(dataElement);
     }
 
     public void Save() => Document.Save(FilePath, SaveOptions.None);
