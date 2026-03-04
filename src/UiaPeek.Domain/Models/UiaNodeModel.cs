@@ -1,4 +1,6 @@
-﻿using Common.Domain.Models;
+﻿using System;
+using System.Diagnostics;
+using Common.Domain.Models;
 
 using UIAutomationClient;
 
@@ -17,5 +19,11 @@ namespace UiaPeek.Domain.Models
     {
         // Intentionally empty — provides a domain-specific node type for UIA recordings.
         // Add UIA-specific fields or logic here if needed in future.
+        public string GetPossibleProcessName()
+        {
+            var processes = Process.GetProcesses();
+
+            return Array.Find(processes, e => e.Id == ProcessId)?.ProcessName;
+        }
     }
 }

@@ -4,8 +4,10 @@ using ExtendedXmlSerializer.Configuration;
 using System;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices.Marshalling;
 using System.Xml.Linq;
 using UiaPeek.Domain.Models;
+using UIAutomationClient;
 
 namespace UiaPeek.PathFinder;
 
@@ -37,7 +39,9 @@ public class LogWriter: IDisposable
 
         this.Serializer = new ConfigurationContainer().UseOptimizedNamespaces().UseAutoFormatting()
             .EnableReferences()
+            .AllowMultipleReferences()
             .Type<UiaChainModel>().Member(e => e.Locator).Verbatim()
+            .Type<IUIAutomationElement>().Ignore()
             .Create();
     }
 
@@ -53,6 +57,7 @@ public class LogWriter: IDisposable
         var serialized = Serializer.Serialize(data);
         var dataElement = new XElement("Data", XElement.Parse(serialized));
         dataElement.SetAttributeValue("ProcessName", processName);
+        dataElement.SetAttributeValue("DateTime", DateTime.Now);
         Document.Root?.Add(dataElement);
     }
 
