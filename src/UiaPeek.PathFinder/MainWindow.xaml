@@ -7,127 +7,135 @@
         WindowStyle="ToolWindow"
         Title="UiaPeek Path Finder v1.0"
         ResizeMode="NoResize"
-        Height="290"
+        Height="360"
         Width="370">
-    <Grid>
-        <Label Content="UiaPeek Path Finder v1.0"
-               HorizontalAlignment="Left"
-               Margin="10,10,0,0"
-               VerticalAlignment="Top"
-               Height="40"
-               Width="330"
-               FontSize="22"
-               FontWeight="Bold"/>
+  <Grid>
+    <Label Content="UiaPeek Path Finder v1.0"
+           HorizontalAlignment="Left"
+           Margin="10,10,0,0"
+           VerticalAlignment="Top"
+           Height="40"
+           Width="330"
+           FontSize="22"
+           FontWeight="Bold" />
 
-        <TextBox HorizontalAlignment="Left"
-                 Margin="10,55,0,0"
-                 TextWrapping="Wrap"
-                 VerticalAlignment="Top"
-                 Width="330"
-                 Name="TxbPath"
-                 Height="76"
-                 VerticalScrollBarVisibility="Auto"
-                 HorizontalScrollBarVisibility="Auto"/>
+    <TextBox HorizontalAlignment="Left"
+             Margin="10,55,0,0"
+             TextWrapping="Wrap"
+             VerticalAlignment="Top"
+             Width="330"
+             Name="TxbPath"
+             Height="76"
+             VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Auto" />
 
-        <Button Content="▶ _Start"
-                HorizontalAlignment="Left"
-                Margin="10,162,0,0"
-                VerticalAlignment="Top"
-                RenderTransformOrigin="-0.57,1.481"
-                Height="30"
-                Width="70"
-                Name="BtnStartStop"
-                Click="BtnStartStop_Click"
-                AccessKeyManager.AccessKeyPressed="BtnStartStop_AccessKeyPressed"
-                Cursor="Hand"/>
+    <Button Content="▶ _Start"
+            HorizontalAlignment="Left"
+            Margin="10,162,0,0"
+            VerticalAlignment="Top"
+            RenderTransformOrigin="-0.57,1.481"
+            Height="30"
+            Width="70"
+            Name="BtnStartStop"
+            Click="BtnStartStop_Click"
+            AccessKeyManager.AccessKeyPressed="BtnStartStop_AccessKeyPressed"
+            Cursor="Hand" />
 
-        <Button Content="_Test Path"
-                HorizontalAlignment="Left"
-                Margin="160,162,0,0"
-                VerticalAlignment="Top"
-                RenderTransformOrigin="-0.57,1.481"
-                Height="30"
-                Width="70"
-                Name="BtnTestPath"
-                Click="BtnTestPath_Click"
-                AccessKeyManager.AccessKeyPressed="BtnTestPath_AccessKeyPressed"
-                Cursor="Hand"/>
+    <Button Content="_Test Path"
+            HorizontalAlignment="Left"
+            Margin="160,162,0,0"
+            VerticalAlignment="Top"
+            RenderTransformOrigin="-0.57,1.481"
+            Height="30"
+            Width="70"
+            Name="BtnTestPath"
+            Click="BtnTestPath_Click"
+            AccessKeyManager.AccessKeyPressed="BtnTestPath_AccessKeyPressed"
+            Cursor="Hand" />
 
-        <Label Content="Idle"
-               HorizontalAlignment="Left"
-               Margin="11,133,0,0"
-               Name="LblStatus"
-               VerticalAlignment="Top"
-               RenderTransformOrigin="0.405,-0.33"
-               Width="55"
-               Visibility="Visible"
-               FontSize="9"/>
+    <Label Content="Idle"
+           HorizontalAlignment="Left"
+           Margin="11,133,0,0"
+           Name="LblStatus"
+           VerticalAlignment="Top"
+           RenderTransformOrigin="0.405,-0.33"
+           Width="55"
+           Visibility="Visible"
+           FontSize="9" />
 
-        <Label Content="0000.000s"
-               HorizontalAlignment="Left"
-               Margin="70,133,0,0"
-               Name="LblTime"
-               VerticalAlignment="Top"
-               RenderTransformOrigin="0.405,-0.33"
-               Width="70"
-               Visibility="Visible"
-               FontSize="9"/>
+    <Label Content="0000.000s"
+           HorizontalAlignment="Left"
+           Margin="70,133,0,0"
+           Name="LblTime"
+           VerticalAlignment="Top"
+           RenderTransformOrigin="0.405,-0.33"
+           Width="70"
+           Visibility="Visible"
+           FontSize="9" />
 
-        <Label Content="Faster"
-               HorizontalAlignment="Left"
-               Margin="11,200,0,0"
-               VerticalAlignment="Top"
-               RenderTransformOrigin="0.405,-0.33"/>
+    <Label Content="Faster"
+           HorizontalAlignment="Left"
+           Margin="11,200,0,0"
+           VerticalAlignment="Top"
+           RenderTransformOrigin="0.405,-0.33" />
 
-        <Slider HorizontalAlignment="Left"
-                Margin="52,207,0,0"
-                VerticalAlignment="Top"
-                Width="246"
-                Minimum="500"
-                Maximum="3000"
-                Value="1000"
-                Name="SldRefreshSpeed" ValueChanged="SldRefreshSpeed_ValueChanged"/>
+    <Slider HorizontalAlignment="Left"
+            Margin="52,207,0,0"
+            VerticalAlignment="Top"
+            Width="246"
+            Minimum="500"
+            Maximum="3000"
+            Value="1000"
+            Name="SldRefreshSpeed" ValueChanged="SldRefreshSpeed_ValueChanged" />
 
-        <Label Content="Slower"
-               HorizontalAlignment="Left"
-               Margin="297,200,0,0"
-               VerticalAlignment="Top"
-               RenderTransformOrigin="0.263,0.21" Height="26" Width="45"/>
+    <Label Content="Slower"
+           HorizontalAlignment="Left"
+           Margin="297,200,0,0"
+           VerticalAlignment="Top"
+           RenderTransformOrigin="0.263,0.21" Height="26" Width="45" />
 
-        <Label Content="X:"
-               HorizontalAlignment="Left"
-               Margin="196,131,0,0"
-               VerticalAlignment="Top"
-               RenderTransformOrigin="-6.268,-0.931"/>
+    <Label Content="X:"
+           HorizontalAlignment="Left"
+           Margin="196,131,0,0"
+           VerticalAlignment="Top"
+           RenderTransformOrigin="-6.268,-0.931" />
 
-        <TextBox HorizontalAlignment="Left"
-                 Margin="221,135,0,0"
-                 TextWrapping="Wrap"
-                 VerticalAlignment="Top"
-                 Width="45"
-                 Name="TxbAxisX"/>
+    <TextBox HorizontalAlignment="Left"
+             Margin="221,135,0,0"
+             TextWrapping="Wrap"
+             VerticalAlignment="Top"
+             Width="45"
+             Name="TxbAxisX" />
 
-        <Label Content="Y:"
-               HorizontalAlignment="Left"
-               Margin="271,131,0,0"
-               VerticalAlignment="Top"/>
+    <Label Content="Y:"
+           HorizontalAlignment="Left"
+           Margin="271,131,0,0"
+           VerticalAlignment="Top" />
 
-        <TextBox HorizontalAlignment="Left"
-                 Margin="295,136,0,0"
-                 TextWrapping="Wrap"
-                 VerticalAlignment="Top"
-                 Width="45"
-                 Name="TxbAxisY"/>
+    <TextBox HorizontalAlignment="Left"
+             Margin="295,136,0,0"
+             TextWrapping="Wrap"
+             VerticalAlignment="Top"
+             Width="45"
+             Name="TxbAxisY" />
 
-        <Button Content="Set _Position"
-                HorizontalAlignment="Left"
-                Margin="85,162,0,0"
-                VerticalAlignment="Top"
-                Height="30"
-                Width="70"
-                Name="BtnSetPosition"
-                Click="BtnSetPosition_Click"
-                AccessKeyManager.AccessKeyPressed="BtnSetPosition_AccessKeyPressed"
-                Cursor="Hand"/>
-    </Grid>
+    <Button Content="Set _Position"
+            HorizontalAlignment="Left"
+            Margin="85,162,0,0"
+            VerticalAlignment="Top"
+            Height="30"
+            Width="70"
+            Name="BtnSetPosition"
+            Click="BtnSetPosition_Click"
+            AccessKeyManager.AccessKeyPressed="BtnSetPosition_AccessKeyPressed"
+            Cursor="Hand" />
+
+    <StackPanel Orientation="Vertical" Margin="0,250,0,0">
+           <Label>Process filter (only log for the following process name):</Label>
+           <TextBox x:Name="FilterTextBox" Height="30" FontFamily="Calibri"></TextBox>
+           <ListBox Visibility="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=ShowProcessesListBox}" 
+                    ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=Processes}">
+           </ListBox>
+    </StackPanel>
+  </Grid>
 </Window>

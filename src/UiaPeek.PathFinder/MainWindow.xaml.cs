@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -13,18 +14,22 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
-
+using G4.Extensions;
 using UiaPeek.Domain;
+using UiaPeek.Domain.Models;
 using UiaPeek.PathFinder.Models;
 
 using UIAutomationClient;
+using Timer = System.Timers.Timer;
 
 namespace UiaPeek.PathFinder
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window
+    [DependencyPropertyGenerator.DependencyProperty("ShowProcessesListBox", typeof(bool), DefaultValue = false)]
+    [DependencyPropertyGenerator.DependencyProperty("Processes", typeof(ObservableCollection<string>), DefaultValueExpression = "new()")]
+    public partial class MainWindow : Window, IDisposable
     {
         private readonly UiaPeekRepository _domain = new();
 
@@ -48,7 +53,32 @@ namespace UiaPeek.PathFinder
         public MainWindow()
         {
             InitializeComponent();
+            Writer = new LogWriter();
         }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            Writer.SafeDispose();
+            base.OnClosed(e);
+        }
+
+        protected override void OnInitialized(EventArgs e)
+        {
+            this.Processes.CollectionChanged += ProcessesOnCollectionChanged;
+            this.Processes.AddRange(GetCurrentProcesses());
+            
+            base.OnInitialized(e);
+        }
+
+        private void ProcessesOnCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (Processes.Any() && ShowProcessesListBox == false)
+            {
+                ShowProcessesListBox = true;
+            }
+        }
+
+        public LogWriter Writer { get; }
 
         #region *** Start/Stop   ***
         /// <summary>
@@ -71,6 +101,11 @@ namespace UiaPeek.PathFinder
             StartStop((Button)sender);
         }
 
+        private List<string> GetCurrentProcesses()
+        {
+            return Process.GetProcesses().Select(p => p.ProcessName).ToList();
+        }
+        
         // Handles the click event for the Start/Stop button.
         private void StartStop(Button startStopButton)
         {
@@ -90,10 +125,16 @@ namespace UiaPeek.PathFinder
                     GetPhysicalCursorPos(out TagPoint point);
 
                     // Query the domain service for the UI element chain at the cursor position
-                    var chain = _domain.Peek(point.X, point.Y);
+                    UiaChainModel chain = _domain.Peek(point.X, point.Y);
+                    
+                    var possibleProcessName = chain.TopWindow.GetPossibleProcessName();
+
+                    if (FilterTextBox.Text.Equals(possibleProcessName, StringComparison.CurrentCultureIgnoreCase)) {
+                        this.Writer.SerializeAndWrite(chain, possibleProcessName);
+                    }
 
                     // Extract the XPath-like locator from the element chain
-                    var xpath = chain.Locator;
+                    string xpath = chain.Locator;
 
                     // Update the UI text box with the locator value on the UI thread
                     Dispatcher.BeginInvoke(() =>
@@ -194,25 +235,25 @@ namespace UiaPeek.PathFinder
             LblStatus.Visibility = Visibility.Visible;
 
             // Trim user-provided XPath from textbox
-            var xpath = TxbPath.Text.Trim();
+            string xpath = TxbPath.Text.Trim();
 
             // Start stopwatch for performance measurement
-            var sw = Stopwatch.StartNew();
+            Stopwatch sw = Stopwatch.StartNew();
 
             // A lightweight timer to tick the label every 100ms
             // Helps reassure the user the app is still responsive
-            var ticker = new System.Timers.Timer(100) { AutoReset = true };
+            Timer ticker = new System.Timers.Timer(100) { AutoReset = true };
             ticker.Start();
 
             try
             {
                 // Run the heavy automation lookup off the UI thread
-                var found = await Task.Run(() =>
+                bool found = await Task.Run(() =>
                 {
-                    var automation = new CUIAutomation8();
+                    CUIAutomation8 automation = new CUIAutomation8();
 
                     // Attempt to locate the element by XPath
-                    var element = automation.GetElement(xpath);
+                    IUIAutomationElement element = automation.GetElement(xpath);
 
                     // Return true if element was located
                     return element != null;
@@ -257,6 +298,11 @@ namespace UiaPeek.PathFinder
             /// Gets or sets the Y coordinate of the point.
             /// </summary>
             public int Y;
+        }
+
+        public void Dispose()
+        {
+            Writer?.Dispose();
         }
     }
 
@@ -345,7 +391,7 @@ namespace UiaPeek.PathFinder
             };
 
             // Calculate the expiration time for the timeout.
-            var expiration = DateTime.Now.Add(timeout);
+            DateTime expiration = DateTime.Now.Add(timeout);
 
             // Attempt to get the attributes until the timeout expires.
             while (DateTime.Now < expiration)
@@ -381,7 +427,7 @@ namespace UiaPeek.PathFinder
             xpath = xpath.StartsWith("///") ? xpath.Replace("///", "//") : xpath;
 
             // Get the root UI Automation element.
-            var automationElement = automation.GetRootElement();
+            IUIAutomationElement automationElement = automation.GetRootElement();
 
             // Use the FindElement method for finding an element based on the specified xpath.
             return FindElement(automationElement, xpath).Element?.UIAutomationElement;
@@ -422,7 +468,7 @@ namespace UiaPeek.PathFinder
         public static string GetTagName(this IUIAutomationElement element, TimeSpan timeout)
         {
             // Calculate the expiration time for the timeout.
-            var expires = DateTime.Now.Add(timeout);
+            DateTime expires = DateTime.Now.Add(timeout);
 
             // Attempt to get the tag name until the timeout expires.
             while (DateTime.Now < expires)
@@ -430,7 +476,7 @@ namespace UiaPeek.PathFinder
                 try
                 {
                     // Get the control type field name corresponding to the element's current control type.
-                    var controlType = typeof(UIA_ControlTypeIds).GetFields()
+                    string controlType = typeof(UIA_ControlTypeIds).GetFields()
                         .Where(f => f.FieldType == typeof(int))
                         .FirstOrDefault(f => (int)f.GetValue(null) == element.CurrentControlType)?.Name;
 
@@ -455,10 +501,10 @@ namespace UiaPeek.PathFinder
         public static ObservableCollection<ElementDataModel> ExtractElementData(this IUIAutomationElement element)
         {
             // Get properties starting with "Current" from the UI Automation element type
-            var attributes = element.GetAttributes();
+            IDictionary<string, string> attributes = element.GetAttributes();
 
             // Create a collection of ElementData from the properties
-            var collection = attributes.Select(i => new ElementDataModel { Property = i.Key, Value = i.Value });
+            IEnumerable<ElementDataModel> collection = attributes.Select(i => new ElementDataModel { Property = i.Key, Value = i.Value });
 
             // Return the element data collection as an ObservableCollection
             return new ObservableCollection<ElementDataModel>(collection);
@@ -471,13 +517,13 @@ namespace UiaPeek.PathFinder
             static ElementModel ConvertToElement(IUIAutomationElement automationElement)
             {
                 // Generate a unique ID for the element based on the AutomationId, or use a new GUID if AutomationId is empty.
-                var automationId = automationElement.CurrentAutomationId;
-                var id = string.IsNullOrEmpty(automationId)
+                string automationId = automationElement.CurrentAutomationId;
+                string id = string.IsNullOrEmpty(automationId)
                     ? $"{Guid.NewGuid()}"
                     : automationElement.CurrentAutomationId;
 
                 // Create a Location object based on the current bounding rectangle of the UI Automation element.
-                var location = new LocationModel
+                LocationModel location = new LocationModel
                 {
                     Bottom = automationElement.CurrentBoundingRectangle.bottom,
                     Left = automationElement.CurrentBoundingRectangle.left,
@@ -486,7 +532,7 @@ namespace UiaPeek.PathFinder
                 };
 
                 // Create a new Element object and populate its properties.
-                var element = new ElementModel
+                ElementModel element = new ElementModel
                 {
                     Id = id,
                     UIAutomationElement = automationElement,
@@ -498,7 +544,7 @@ namespace UiaPeek.PathFinder
             }
 
             // Convert the XPath expression to a UI Automation condition
-            var condition = XpathParser.ConvertToCondition(xpath);
+            IUIAutomationCondition condition = XpathParser.ConvertToCondition(xpath);
 
             // Return 400 status code if the XPath expression is invalid
             if (condition == null)
@@ -507,12 +553,12 @@ namespace UiaPeek.PathFinder
             }
 
             // Determine the search scope based on the XPath expression
-            var scope = xpath.StartsWith("//")
+            TreeScope scope = xpath.StartsWith("//")
                 ? TreeScope.TreeScope_Descendants
                 : TreeScope.TreeScope_Children;
 
             // Find the first element that matches the condition within the specified scope
-            var element = applicationRoot.FindFirst(scope, condition);
+            IUIAutomationElement element = applicationRoot.FindFirst(scope, condition);
 
             // Return the status and element: 404 if not found, 200 if found
             return element == null
@@ -544,10 +590,10 @@ namespace UiaPeek.PathFinder
         public XDocument New()
         {
             // Create a new instance of the UI Automation object.
-            var automation = new CUIAutomation8();
+            CUIAutomation8 automation = new CUIAutomation8();
 
             // Use the root element if available; otherwise, get the desktop root element.
-            var element = _rootElement ?? automation.GetRootElement();
+            IUIAutomationElement element = _rootElement ?? automation.GetRootElement();
 
             // Create the XML document from the UI Automation element tree.
             return New(automation, element, addDesktop: true);
@@ -561,7 +607,7 @@ namespace UiaPeek.PathFinder
         public static XDocument New(IUIAutomationElement element)
         {
             // Create a new instance of the UI Automation object.
-            var automation = new CUIAutomation8();
+            CUIAutomation8 automation = new CUIAutomation8();
 
             // Create the XML document from the UI Automation element tree.
             return New(automation, element, addDesktop: true);
@@ -588,13 +634,13 @@ namespace UiaPeek.PathFinder
         public static XDocument New(CUIAutomation8 automation, IUIAutomationElement element, bool addDesktop)
         {
             // Register and generate XML data for the new DOM.
-            var xmlData = Register(automation, element);
+            List<string> xmlData = Register(automation, element);
 
             // Construct the XML body with the tag name, attributes, and registered XML data.
-            var xmlBody = string.Join("\n", xmlData);
+            string xmlBody = string.Join("\n", xmlData);
 
             // Combine the XML data into a single XML string.
-            var xml = addDesktop ? "<Desktop>" + xmlBody + "</Desktop>" : xmlBody;
+            string xml = addDesktop ? "<Desktop>" + xmlBody + "</Desktop>" : xmlBody;
 
             try
             {
@@ -612,24 +658,24 @@ namespace UiaPeek.PathFinder
         private static List<string> Register(CUIAutomation8 automation, IUIAutomationElement element)
         {
             // Initialize a list to store XML data.
-            var xml = new List<string>();
+            List<string> xml = new List<string>();
 
             // Get the tag name and attributes of the element.
-            var tagName = element.GetTagName();
-            var attributes = GetElementAttributes(element);
+            string tagName = element.GetTagName();
+            string attributes = GetElementAttributes(element);
 
             // Add the opening tag with attributes to the XML list.
             xml.Add($"<{tagName} {attributes}>");
 
             // Create a condition to find all child elements.
-            var condition = automation.CreateTrueCondition();
-            var treeWalker = automation.CreateTreeWalker(condition);
-            var childElement = treeWalker.GetFirstChildElement(element);
+            IUIAutomationCondition condition = automation.CreateTrueCondition();
+            IUIAutomationTreeWalker treeWalker = automation.CreateTreeWalker(condition);
+            IUIAutomationElement childElement = treeWalker.GetFirstChildElement(element);
 
             // Recursively process child elements.
             while (childElement != null)
             {
-                var nodeXml = Register(automation, childElement);
+                List<string> nodeXml = Register(automation, childElement);
                 xml.AddRange(nodeXml);
                 childElement = treeWalker.GetNextSiblingElement(childElement);
             }
@@ -645,16 +691,16 @@ namespace UiaPeek.PathFinder
         private static string GetElementAttributes(IUIAutomationElement element)
         {
             // Get the attributes of the element.
-            var attributes = element.GetAttributes();
+            IDictionary<string, string> attributes = element.GetAttributes();
 
             // Get the runtime ID of the element and serialize it to a JSON string.
-            var runtime = element.GetRuntimeId().OfType<int>();
-            var id = JsonSerializer.Serialize(runtime);
+            IEnumerable<int> runtime = element.GetRuntimeId().OfType<int>();
+            string id = JsonSerializer.Serialize(runtime);
             attributes.Add("id", id);
 
             // Initialize a list to store attribute strings.
-            var xmlNode = new List<string>();
-            foreach (var item in attributes)
+            List<string> xmlNode = new List<string>();
+            foreach (KeyValuePair<string, string> item in attributes)
             {
                 // Skip attributes with empty or whitespace-only keys or values.
                 if (string.IsNullOrEmpty(item.Key) || string.IsNullOrEmpty(item.Value))
