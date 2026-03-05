@@ -14,9 +14,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Xml.Linq;
-using G4.Extensions;
 using UiaPeek.Domain;
 using UiaPeek.Domain.Models;
+using UiaPeek.PathFinder.Extensions;
 using UiaPeek.PathFinder.Models;
 
 using UIAutomationClient;
@@ -29,6 +29,7 @@ namespace UiaPeek.PathFinder
     /// </summary>
     [DependencyPropertyGenerator.DependencyProperty("ShowProcessesListBox", typeof(bool), DefaultValue = false)]
     [DependencyPropertyGenerator.DependencyProperty("Processes", typeof(ObservableCollection<string>), DefaultValueExpression = "new()")]
+    [DependencyPropertyGenerator.DependencyProperty("ProcessesNamesProvider", typeof(ProcessesNameProvider))]
     public partial class MainWindow : Window, IDisposable
     {
         private readonly UiaPeekRepository _domain = new();
@@ -54,6 +55,7 @@ namespace UiaPeek.PathFinder
         {
             InitializeComponent();
             Writer = new LogWriter();
+            ProcessesNamesProvider = new ProcessesNameProvider(this.Processes);
         }
 
         protected override void OnClosed(EventArgs e)
@@ -131,7 +133,6 @@ namespace UiaPeek.PathFinder
                     
                     var possibleProcessName = chain.TopWindow.GetPossibleProcessName();
 
-                    
                     if (text.Equals(possibleProcessName, StringComparison.CurrentCultureIgnoreCase)) {
                         this.Writer.SerializeAndWrite(chain, possibleProcessName);
                     }
@@ -306,6 +307,19 @@ namespace UiaPeek.PathFinder
         public void Dispose()
         {
             Writer?.Dispose();
+        }
+
+        private void OpenLogBtn_OnClick(object sender, RoutedEventArgs e)
+        {
+            var newp = new ProcessStartInfo(Writer.FilePath)
+            {
+                UseShellExecute = true
+            };
+
+            Dispatcher.Invoke(() =>
+            {
+                Process.Start(newp);
+            });
         }
     }
 

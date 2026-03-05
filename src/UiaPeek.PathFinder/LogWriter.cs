@@ -2,11 +2,15 @@
 using ExtendedXmlSerializer;
 using ExtendedXmlSerializer.Configuration;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Runtime.InteropServices.Marshalling;
 using System.Xml.Linq;
+using System.Xml.XPath;
 using UiaPeek.Domain.Models;
+using UiaPeek.PathFinder.Extensions;
 using UIAutomationClient;
 
 namespace UiaPeek.PathFinder;
@@ -37,11 +41,14 @@ public class LogWriter: IDisposable
             Document = XDocument.Load(FilePath);
         }
 
-        this.Serializer = new ConfigurationContainer().UseOptimizedNamespaces().UseAutoFormatting()
+        var memberConfiguration = new ConfigurationContainer().UseOptimizedNamespaces()
             .EnableReferences()
             .AllowMultipleReferences()
-            .Type<UiaChainModel>().Member(e => e.Locator).Verbatim()
+            .Type<UiaNodeModel>().Member(e => e.Element).Ignore();
+
+        this.Serializer = memberConfiguration
             .Type<IUIAutomationElement>().Ignore()
+            .Type<UiaChainModel>().Member(e => e.Path).Ignore()
             .Create();
     }
 
@@ -52,12 +59,35 @@ public class LogWriter: IDisposable
         Document.Root?.Add(new XElement("Data", data));
     }
 
-    public void SerializeAndWrite<T>(T data, string? processName)
+    public void SerializeAndWrite<T>(T data, string? processName) where T: class
     {
-        var serialized = Serializer.Serialize(data);
-        var dataElement = new XElement("Data", XElement.Parse(serialized));
+        if (data is null) throw new ArgumentNullException(nameof(data));
+
+        string locatorElXpath = "*[namespace-uri()='clr-namespace:UiaPeek.Domain.Models;assembly=UiaPeek.Domain' and local-name()='UiaChainModel'][1]/*[namespace-uri()='clr-namespace:UiaPeek.Domain.Models;assembly=UiaPeek.Domain' and local-name()='Locator']";
+
+        string docRootElXpath = "/PathLog/Data/" + locatorElXpath;
+
+        List<XElement> existingLocatorElValues = ((IEnumerable<object>)Document.XPathEvaluate(docRootElXpath)).Cast<XElement>().DistinctBy(a => a.Value).ToList();
+
+        string? serializedXmlString = Serializer.Serialize(data);
+        XElement dataContents = XElement.Parse(serializedXmlString);
+        var (nss, _) = dataContents.ExtractNamespaces();
+        XAttribute? defaultNamespace = nss.GetDefaultNs();
+
+        List<XElement> newLocatorElValues = dataContents.Descendants(XName.Get("Locator", defaultNamespace!.Value)).ToList();
+
+        var anyElMatched = existingLocatorElValues.Any(a => newLocatorElValues.Any(aa => aa.Value == a.Value));
+
+        if (anyElMatched)
+        {
+            return;
+        }
+
+        XElement dataElement = new XElement("Data", dataContents);
+
         dataElement.SetAttributeValue("ProcessName", processName);
         dataElement.SetAttributeValue("DateTime", DateTime.Now);
+
         Document.Root?.Add(dataElement);
     }
 
